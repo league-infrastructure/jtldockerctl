@@ -40,20 +40,6 @@ _logger = logging.getLogger(__name__)
 # when using this Python module as a library.
 
 
-def fib(n):
-    """Fibonacci example function
-
-    Args:
-      n (int): integer
-
-    Returns:
-      int: n-th Fibonacci number
-    """
-    assert n > 0
-    a, b = 1, 1
-    for _i in range(n - 1):
-        a, b = b, a + b
-    return a
 
 
 # ---- CLI ----
@@ -123,7 +109,7 @@ def main(args):
     args = parse_args(args)
     setup_logging(args.loglevel)
     _logger.debug("Starting crazy calculations...")
-    print(f"The {args.n}-th Fibonacci number is {fib(args.n)}")
+    print("HERE")
     _logger.info("Script ends here")
 
 
