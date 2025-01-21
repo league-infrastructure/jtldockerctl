@@ -1,3 +1,36 @@
+[project]
+name = "jtldctl"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Eric Busboom", email = "eric@civicknowledge.com" }
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python"
+]
+
+requires-python = ">=3.11"
+
+dependencies = [
+    "docker>=7.1.0",
+    "ipykernel>=6.29.5",
+    "names-generator>=0.2.0",
+    "python-slugify>=8.0.4",
+]
+
+[project.scripts]
+jtlcc = "jtldockerctl.cli.jtlcc:run"
+
+[project.optional-dependencies]
+testing = [
+    "setuptools",
+    "pytest",
+    "pytest-cov"
+]
+
 [build-system]
 # AVOID CHANGING REQUIRES: IT WILL BE UPDATED BY PYSCAFFOLD!
 requires = ["setuptools>=46.1.0", "setuptools_scm[toml]>=5"]
@@ -6,4 +39,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 # For smarter version schemes and other configuration options,
 # check out https://github.com/pypa/setuptools_scm
-version_scheme = "no-guess-dev"
+# version_scheme = "no-guess-dev"
+
+[tool.setuptools]
+packages = { find = { where = ["src"], exclude = ["tests"] } }
+zip-safe = false
+package-dir = { "" = "src" }
