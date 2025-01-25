@@ -4,6 +4,8 @@ from slugify import slugify
 from pathlib import Path
 from urllib.parse import urlparse
 from pathlib import Path
+from datetime import datetime
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +79,7 @@ def create_container(
     ports: dict = None,
     networks: list = None,
     labels: dict = None,
-    remove=True
+    remove=False
 ):
     """
     Create and start a Docker container for a development environment.
@@ -182,7 +184,7 @@ def create_novnc_container(client, config,  username, reset = False):
         name=container_name,
         #ports=["6080"],
         labels=labels,
-        networks=["x11", "caddy"],
+        networks=["x11", "jtlctl", "caddy"],
     )
 
     # Start the container
@@ -206,13 +208,15 @@ def create_cs_container(client, config, image, username, env_vars, vnc_id=None, 
     vnc_host = vnc_c.labels.get("caddy")
     vnc_url = f"https://{vnc_host}"
 
+    password = "code4life"
+
     _env_vars = {
-        "PASSWORD": "code4life",
+        "PASSWORD": password,
         "DISPLAY": f"{vnc_c.name}:0",
         "VNC_URL": vnc_url,
-        "KST_REPORTING_URL": "http://192.168.1.49:8095",
+        "KST_REPORTING_URL": config.KST_REPORTING_URL,
         "KST_CONTAINER_ID": name,
-		"KST_REPORT_RATE": "30", 
+		"KST_REPORT_RATE": config.KST_REPORT_RATE if hasattr(config, "KST_REPORT_RATE") else 30
     }
     
     env_vars = {**_env_vars, **env_vars}
@@ -221,6 +225,9 @@ def create_cs_container(client, config, image, username, env_vars, vnc_id=None, 
         "jtl": 'true', 
         "jtl.codeserver": 'true',  
         "jtl.codeserver.username": username,
+        "jt.codeserver.password": password,
+        "jtl.codeserver.vnc": vnc_c.name,
+        "jtl.codeserver.start_time": datetime.now(pytz.timezone('America/Los_Angeles')).isoformat(),
         
         "caddy": config.HOSTNAME_TEMPLATE.format(username=slugify(username)),
         "caddy.reverse_proxy": "{{upstreams 8080}}"
@@ -233,7 +240,7 @@ def create_cs_container(client, config, image, username, env_vars, vnc_id=None, 
         name=container_name,
         local_dir=None,
         labels=labels,
-        networks=["x11", "caddy"],
+        networks=["x11", "jtlctl", "caddy"],
     )
 
     # Start the container
@@ -248,3 +255,10 @@ def create_cs_pair(client, config, image, username, env_vars = {}, reset = False
     nvc = create_novnc_container(client, config, username=username, reset=reset)
     pa = create_cs_container(client, config, image, username=username, env_vars = env_vars, vnc_id=nvc.id, reset=reset)
     return nvc, pa
+
+
+def container_status(client, username):
+    containers = client.containers.list(filters={"label": f"jtl.codeserver.username={username}"}, all=True)
+    if containers:
+        return containers[0].status
+    return None
