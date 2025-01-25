@@ -178,7 +178,7 @@ def create_novnc_container(client, config,  username, reset = False):
     
     container = create_container(
         client,
-        image=config['images']['novnc'],
+        image=config.IMAGES_NOVNC,
         name=container_name,
         #ports=["6080"],
         labels=labels,
@@ -222,7 +222,7 @@ def create_cs_container(client, config, image, username, env_vars, vnc_id=None, 
         "jtl.codeserver": 'true',  
         "jtl.codeserver.username": username,
         
-        "caddy": config['hostname_template'].format(username=username),
+        "caddy": config.HOSTNAME_TEMPLATE.format(username=slugify(username)),
         "caddy.reverse_proxy": "{{upstreams 8080}}"
     }
     

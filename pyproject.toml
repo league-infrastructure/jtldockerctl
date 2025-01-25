@@ -1,7 +1,7 @@
 [project]
-name = "jtldctl"
+name = "jtldockerctl"
 version = "0.1.0"
-description = "Add your description here"
+description = "Functions for managing the LEAGUE's docker containers"
 readme = "README.md"
 authors = [
     { name = "Eric Busboom", email = "eric@civicknowledge.com" }
