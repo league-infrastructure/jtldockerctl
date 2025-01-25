@@ -1,7 +1,72 @@
 import docker
 import logging
+from slugify import slugify
+from pathlib import Path
+from urllib.parse import urlparse
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+import docker
+
+
+def get_last_path_part(url):
+    """
+    Parses a URL and returns the last part of the path.
+    
+    Args:
+        url (str): The URL to parse.
+    
+    Returns:
+        str: The last part of the path in the URL.
+    """
+    # Parse the URL
+    parsed_url = urlparse(url)
+    # Extract the path and get the last part using pathlib
+    last_part = Path(parsed_url.path).name
+    return last_part
+
+def ensure_network_exists(client, network_name, is_external=False, network_type="bridge"):
+    """
+    Ensure a Docker network exists.
+    
+    Args:
+        network_name (str): Name of the network to ensure.
+        is_external (bool): If True, assumes the network is managed externally and only verifies its existence.
+        network_type (str): The type of the network ('bridge' or 'overlay'). Defaults to 'bridge'.
+    
+    Returns:
+        docker.models.networks.Network: The existing or newly created network object.
+    """
+    try:
+        # Initialize Docker client
+     
+
+        # Check if the network already exists
+        existing_networks = client.networks.list(names=[network_name])
+        if existing_networks:
+            logger.debug(f"Network '{network_name}' already exists.")
+            return existing_networks[0]
+
+        if is_external:
+            raise ValueError(f"External network '{network_name}' does not exist.")
+
+        # Create the network if it doesn't exist
+        network = client.networks.create(
+            name=network_name,
+            driver=network_type,
+            check_duplicate=True
+        )
+        logger.debug(f"Network '{network_name}' created as a '{network_type}' network.")
+        return network
+
+    except docker.errors.APIError as e:
+        logger.error(f"Error interacting with Docker API: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+
+    return None
+
 
 def create_container(
     client: docker.DockerClient,
@@ -38,33 +103,30 @@ def create_container(
     logger.debug(f"Port bindings: {port_bindings}")
     logger.debug(f"Volumes: {local_dir}")
     
-    
-    try:
-        # Create and start the container
-        container = client.containers.run(
-            image=image,
-            name=name,
-            ports=port_bindings,
-            environment=env_vars,
-            volumes={local_dir: {"bind": "/workspace", "mode": "rw"}} if local_dir else None,
-            detach=True,
-            remove=remove, 
-            labels=labels,
-            network_mode="bridge",  # Can be overridden by connecting to networks after creation
-        )
-        
-        # Connect to additional networks if specified
-        for net in (networks or []):
-            network = client.networks.get(net)
-            logger.info(f"Connecting container to network '{net}' : {network.id}")
-            network.connect(container)
-        
-        logger.info(f"Container '{container.name}' ({container.id}) created successfully.")
-        return container
 
-    except docker.errors.APIError as e:
-        print(f"An error occurred: {e}")
-        return None
+    # Create and start the container
+    container = client.containers.run(
+        image=image,
+        name=slugify(name),
+        ports=port_bindings,
+        environment=env_vars,
+        volumes={local_dir: {"bind": "/workspace", "mode": "rw"}} if local_dir else None,
+        detach=True,
+        remove=remove, 
+        labels=labels,
+        network_mode="bridge",  # Can be overridden by connecting to networks after creation
+    )
+    
+    # Connect to additional networks if specified
+    for net in (networks or []):
+        network = client.networks.get(net)
+        logger.info(f"Connecting container to network '{net}' : {network.id}")
+        network.connect(container)
+    
+    logger.info(f"Container '{container.name}' ({container.id}) created successfully.")
+    return container
+
+
 
 def only_one_container(containers, reset = False):
     if containers:
@@ -98,12 +160,16 @@ def create_novnc_container(client, config,  username, reset = False):
     if container := only_one_container(containers, reset):
         return container
      
+    name = slugify(username)
+    container_name = f"{name}-novnc"
+    hostname = f"{container_name}.do.jointheleague.org"
+     
     labels = {
         "jtl":  'true', 
         "jtl.novnc": 'true', 
         "jtl.novnc.username": username,
         
-        "caddy": "novnc.do.jointheleague.org",
+        "caddy": hostname,
         "caddy.@ws.0_header": "Connection *Upgrade*",
         "caddy.@ws.1_header": "Upgrade websocket",
         "caddy.0_reverse_proxy": "@ws {{upstreams 6080}}",
@@ -112,9 +178,9 @@ def create_novnc_container(client, config,  username, reset = False):
     
     container = create_container(
         client,
-        image=config['novnc_image'],
-        name=None,
-        ports=["6080"],
+        image=config['images']['novnc'],
+        name=container_name,
+        #ports=["6080"],
         labels=labels,
         networks=["x11", "caddy"],
     )
@@ -123,3 +189,62 @@ def create_novnc_container(client, config,  username, reset = False):
     container.start()
 
     return container
+
+def create_cs_container(client, config, image, username, env_vars, vnc_id=None, reset=False):
+    # Create the container
+    
+    containers = client.containers.list(filters={"label": f"jtl.codeserver.username={username}"}, all=True)
+    
+    if container := only_one_container(containers, reset):
+        return container
+       
+    vnc_c = client.containers.get(vnc_id)   
+       
+    name = slugify(username)
+    container_name = f"{slugify(username)}"
+       
+    vnc_host = vnc_c.labels.get("caddy")
+    vnc_url = f"https://{vnc_host}"
+
+    _env_vars = {
+        "PASSWORD": "code4life",
+        "DISPLAY": f"{vnc_c.name}:0",
+        "VNC_URL": vnc_url,
+        "KST_REPORTING_URL": "http://192.168.1.49:8095",
+        "KST_CONTAINER_ID": name,
+		"KST_REPORT_RATE": "30", 
+    }
+    
+    env_vars = {**_env_vars, **env_vars}
+    
+    labels = {
+        "jtl": 'true', 
+        "jtl.codeserver": 'true',  
+        "jtl.codeserver.username": username,
+        
+        "caddy": config['hostname_template'].format(username=username),
+        "caddy.reverse_proxy": "{{upstreams 8080}}"
+    }
+    
+    container = create_container(
+        client,
+        image=image,
+        env_vars=env_vars,
+        name=container_name,
+        local_dir=None,
+        labels=labels,
+        networks=["x11", "caddy"],
+    )
+
+    # Start the container
+    container.start()
+
+    return container
+
+def create_cs_pair(client, config, image, username, env_vars = {}, reset = False):
+    """ Create a pair of containers: a novnc container and a codeserver container.
+    
+    """
+    nvc = create_novnc_container(client, config, username=username, reset=reset)
+    pa = create_cs_container(client, config, image, username=username, env_vars = env_vars, vnc_id=nvc.id, reset=reset)
+    return nvc, pa

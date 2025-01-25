@@ -18,7 +18,9 @@ dependencies = [
     "docker>=7.1.0",
     "ipykernel>=6.29.5",
     "names-generator>=0.2.0",
+    "paramiko>=3.5.0",
     "python-slugify>=8.0.4",
+    "jtlutil>=0.1.4",
 ]
 
 [project.scripts]
